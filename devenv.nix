@@ -1,20 +1,41 @@
-{pkgs, ...}: {
+{
+  config,
+  pkgs,
+  ...
+}: {
   packages = with pkgs; [
     git
     claude-code
+    lua-language-server
+    stylua
   ];
 
-  claude.code.enable = true;
+  languages.lua.enable = true;
+
+  claude.code = {
+    enable = true;
+    mcpServers = {
+      # Local devenv MCP server
+      devenv = {
+        type = "stdio";
+        command = "devenv";
+        args = ["mcp"];
+        env = {
+          DEVENV_ROOT = config.devenv.root;
+        };
+      };
+    };
+  };
 
   enterShell = ''
     echo ""
-    echo "🚀 Welcome to your Claude Code development environment!"
-    echo "📋 This template includes:"
-    echo "   • Claude Code CLI ready to use"
-    echo "   • Git with pre-commit hooks configured"
-    echo "   • Clean development environment"
+    echo "🚀 nvim-code-blocks development environment"
+    echo "📋 Neovim plugin for code block operations"
+    echo "   • Lua language support enabled"
+    echo "   • lua-language-server for LSP"
+    echo "   • stylua for formatting"
     echo ""
-    echo "💡 Quick start: Run 'claude' to begin coding with AI assistance"
+    echo "💡 Quick start: Run 'claude' to begin development"
     echo ""
   '';
 

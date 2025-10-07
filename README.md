@@ -1,69 +1,87 @@
-# DevEnv Claude Template
+# nvim-code-blocks
 
-A template repository for quickly setting up a development environment with [devenv](https://devenv.sh/) and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) integration.
-
-## What's Included
-
-- **devenv configuration** for reproducible development environments
-- **Claude Code CLI** pre-installed and configured
-- **Git hooks** for code quality (trailing whitespace, end-of-file fixes)
-- **Welcome message** displayed when entering the shell
-
-## Quick Start
-
-1. **Use this template** to create a new repository
-2. **Clone your new repository**
-3. **Enter the development environment**:
-   ```bash
-   devenv shell
-   ```
-4. **Start coding with AI assistance**:
-   ```bash
-   claude
-   ```
+A Neovim plugin for code block operations including highlighting, yanking, deleting, and pasting.
 
 ## Features
 
-### DevEnv Integration
-- Reproducible development environment using Nix
-- Automatic dependency management
-- Consistent environment across team members
+- **Highlight**: Visually highlight code blocks in your files
+- **Yank**: Copy entire code blocks with a single command
+- **Delete**: Remove code blocks efficiently
+- **Paste**: Insert previously yanked code blocks
 
-### Claude Code Ready
-- Claude Code CLI pre-installed
-- Easy AI-powered coding assistance
-- No additional setup required
+## Installation
 
-### Git Hooks
-- Pre-commit hooks configured automatically
-- Code quality enforcement
-- Trailing whitespace removal
-- End-of-file fixing
+### Using [lazy.nvim](https://github.com/folke/lazy.nvim)
 
-## Customization
-
-### Adding Packages
-Edit `devenv.nix` to add more packages:
-```nix
-packages = with pkgs; [
-  git
-  claude-code
-  nodejs  # Add your packages here
-  python3
-];
+```lua
+{
+  "yourusername/nvim-code-blocks",
+  config = function()
+    require("nvim-code-blocks").setup({
+      -- Configuration options
+      highlight = {
+        enabled = true,
+        hl_group = "CodeBlock",
+      },
+    })
+  end,
+}
 ```
 
-### Modifying Welcome Message
-Update the `enterShell` section in `devenv.nix` to customize the welcome message.
+### Using [packer.nvim](https://github.com/wbthomason/packer.nvim)
 
-### Additional Git Hooks
-Add more git hooks in the `git-hooks.hooks` section of `devenv.nix`.
+```lua
+use {
+  "yourusername/nvim-code-blocks",
+  config = function()
+    require("nvim-code-blocks").setup()
+  end,
+}
+```
 
-## Requirements
+## Usage
 
-- [Nix](https://nixos.org/download) package manager
-- [devenv](https://devenv.sh/getting-started/) installed
+### Commands
+
+- `:CodeBlockYank` - Yank the current code block
+- `:CodeBlockDelete` - Delete the current code block
+- `:CodeBlockPaste` - Paste a previously yanked code block
+- `:CodeBlockHighlight` - Highlight the current code block
+
+### Configuration
+
+```lua
+require("nvim-code-blocks").setup({
+  highlight = {
+    enabled = true,
+    hl_group = "CodeBlock",
+  },
+})
+```
+
+## Development
+
+This project uses [devenv](https://devenv.sh/) for development environment management.
+
+### Setup
+
+1. Install [Nix](https://nixos.org/download) and [devenv](https://devenv.sh/getting-started/)
+2. Clone this repository
+3. Enter the development environment:
+   ```bash
+   devenv shell
+   ```
+
+### Development Tools
+
+- **Lua LSP**: lua-language-server for code intelligence
+- **Formatting**: stylua for code formatting
+- **Git Hooks**: Pre-commit hooks for code quality
+
+## Contributing
+
+Contributions are welcome! See [spec/ideas.md](spec/ideas.md) for planned features and ideas.
 
 ## License
 
-This template is provided as-is. Use it as a starting point for your projects.
+MIT
