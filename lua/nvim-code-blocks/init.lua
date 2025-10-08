@@ -28,7 +28,7 @@ M.config = {
 			"while_statement",
 		},
 		clojure = { "list_lit", "vec_lit", "map_lit", "set_lit" },
-		lua = { "function_definition", "do_statement", "if_statement", "for_statement", "while_statement" },
+		lua = { "function_declaration", "block", "if_statement", "for_statement", "while_statement", "do_statement" },
 	},
 }
 
@@ -175,14 +175,28 @@ function M.update_highlight()
 
 	-- Create extmarks for each line in the block
 	for row = bounds.start_row, bounds.end_row do
-		local extmark = vim.api.nvim_buf_set_extmark(bufnr, M.namespace, row, bounds.min_col, {
+		-- Get the actual line to check its length
+		local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+		local line_len = #line
+
+		-- Ensure start_col is valid
+		local start_col = math.min(bounds.min_col, line_len)
+
+		-- For end_col, we want to extend to max_col, but if the line is shorter,
+		-- we use hl_eol to extend to the right
+		local end_col = math.max(line_len, start_col)
+
+		local ok, extmark = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, start_col, {
 			end_row = row,
-			end_col = math.max(bounds.max_col, bounds.min_col + 1),
+			end_col = end_col,
 			hl_group = M.config.highlight.hl_group,
 			hl_eol = true,
 			priority = 100,
 		})
-		table.insert(M.extmarks, extmark)
+
+		if ok then
+			table.insert(M.extmarks, extmark)
+		end
 	end
 end
 
