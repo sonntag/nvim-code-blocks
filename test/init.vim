@@ -81,6 +81,35 @@ vim.keymap.set('n', '<leader>ct', function()
   end
 end, { desc = 'Test treesitter' })
 
+-- Debug command
+vim.keymap.set('n', '<leader>cc', function()
+  local plugin = require('nvim-code-blocks')
+
+  print("=== Debug Info ===")
+
+  -- Get block info
+  local block = plugin.get_containing_block()
+  if not block then
+    print("No block found")
+    return
+  end
+
+  print(string.format("Block: %s (lines %d-%d)", block.node:type(), block.start_row + 1, block.end_row + 1))
+
+  -- Get bounds
+  local bounds = plugin.get_block_bounds(block)
+  if bounds then
+    print(string.format("Bounds: min_col=%d, max_col=%d", bounds.min_col, bounds.max_col))
+  end
+
+  -- Show all extmarks
+  -- print("\nExtmarks:")
+  -- local extmarks = vim.api.nvim_buf_get_extmarks(0, plugin.namespace, 0, -1, {details=true})
+  -- for i, mark in ipairs(extmarks) do
+  --   print(string.format("  [%d] row=%d, col=%d, details=%s", i, mark[2], mark[3], vim.inspect(mark[4])))
+  -- end
+end, { desc = 'Debug code blocks' })
+
 print("nvim-code-blocks loaded! Use <leader>cy/cd/cp/ch to test")
 print("Use <leader>ct to check if treesitter is working")
 EOF

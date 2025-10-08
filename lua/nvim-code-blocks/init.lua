@@ -122,12 +122,13 @@ function M.get_block_bounds(block)
 	local max_col = 0
 
 	for _, line in ipairs(lines) do
-		-- Find first non-whitespace character
+		-- Find first non-whitespace character (byte position)
 		local first_char = line:match("^%s*()%S")
 		if first_char then
 			min_col = math.min(min_col, first_char - 1)
 		end
-		max_col = math.max(max_col, #line)
+		-- Use vim.fn.strdisplaywidth for accurate display width with tabs
+		max_col = math.max(max_col, vim.fn.strdisplaywidth(line))
 	end
 
 	-- If all lines are empty, use start_col
@@ -138,8 +139,8 @@ function M.get_block_bounds(block)
 	return {
 		start_row = block.start_row,
 		end_row = block.end_row,
-		min_col = min_col,
-		max_col = max_col,
+		min_col = min_col, -- byte position
+		max_col = max_col, -- display width
 	}
 end
 
@@ -178,24 +179,53 @@ function M.update_highlight()
 		-- Get the actual line to check its length
 		local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
 		local line_len = #line
+		local line_display_width = vim.fn.strdisplaywidth(line)
 
-		-- Ensure start_col is valid
-		local start_col = math.min(bounds.min_col, line_len)
+		-- For empty lines, add virtual text at column 0
+		if line_len == 0 then
+			-- Create virtual text with leading spaces + highlighted section
+			local leading = string.rep(" ", bounds.min_col)
+			local highlighted = string.rep(" ", bounds.max_col - bounds.min_col)
 
-		-- For end_col, we want to extend to max_col, but if the line is shorter,
-		-- we use hl_eol to extend to the right
-		local end_col = math.max(line_len, start_col)
+			local ok, extmark = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, 0, {
+				virt_text = {
+					{ leading },
+					{ highlighted, M.config.highlight.hl_group }
+				},
+				virt_text_pos = "inline",
+				priority = 100,
+			})
+			if ok then
+				table.insert(M.extmarks, extmark)
+			end
+		else
+			-- Ensure start_col is valid
+			local start_col = math.min(bounds.min_col, line_len)
 
-		local ok, extmark = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, start_col, {
-			end_row = row,
-			end_col = end_col,
-			hl_group = M.config.highlight.hl_group,
-			hl_eol = true,
-			priority = 100,
-		})
+			-- For the main highlight, go to end of actual line content
+			-- Use end_line instead of end_col to highlight entire line
+			local ok1, extmark1 = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, start_col, {
+				end_line = row + 1,
+				hl_group = M.config.highlight.hl_group,
+				priority = 100,
+			})
 
-		if ok then
-			table.insert(M.extmarks, extmark)
+			if ok1 then
+				table.insert(M.extmarks, extmark1)
+			end
+
+			-- Add virtual text to extend to max_col (display width)
+			local virt_text_len = math.max(0, bounds.max_col - line_display_width)
+			if virt_text_len > 0 then
+				local ok2, extmark2 = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, line_len, {
+					virt_text = { { string.rep(" ", virt_text_len), M.config.highlight.hl_group } },
+					virt_text_pos = "overlay",
+					priority = 100,
+				})
+				if ok2 then
+					table.insert(M.extmarks, extmark2)
+				end
+			end
 		end
 	end
 end
