@@ -97,56 +97,123 @@ function M.get_containing_block()
 	local ft = vim.bo.filetype
 	local block_types = M.config.block_nodes[ft] or M.config.block_nodes.default
 
-	-- Walk up the tree to find a block node
-	local candidate_block = nil
-	while node do
-		local node_type = node:type()
+	-- Get cursor's display column once
+	local current_line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+	local cursor_display_col
+
+	if #current_line == 0 or col >= #current_line then
+		-- Empty line or cursor in virtual space: use virtcol() for accurate position
+		cursor_display_col = vim.fn.virtcol(".")
+	else
+		-- Normal line: calculate from line content
+		cursor_display_col = vim.fn.strdisplaywidth(current_line:sub(1, col))
+	end
+
+	-- Walk up the tree and collect all matching blocks with depth info
+	local matching_blocks = {}
+	local depth = 0
+	local temp_node = node
+	while temp_node do
+		local node_type = temp_node:type()
 		for _, block_type in ipairs(block_types) do
 			if node_type == block_type then
-				local start_row, start_col, end_row, end_col = node:range()
+				local start_row, start_col, end_row, end_col = temp_node:range()
 				local block = {
-					node = node,
+					node = temp_node,
 					start_row = start_row,
 					start_col = start_col,
 					end_row = end_row,
 					end_col = end_col,
 				}
 
-				-- Check if cursor is within the block's column range
-				-- Get the bounds to check min_col
+				-- Get the bounds
 				local bounds = M.get_block_bounds(block)
 				if bounds then
-					-- Get cursor's display column
-					local current_line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
-					local cursor_display_col
-
-					if #current_line == 0 or col >= #current_line then
-						-- Empty line or cursor in virtual space: use virtcol() for accurate position
-						cursor_display_col = vim.fn.virtcol(".")
-					else
-						-- Normal line: calculate from line content
-						cursor_display_col = vim.fn.strdisplaywidth(current_line:sub(1, col))
-					end
-
-					-- If cursor is at or after the block's left edge, this is our block
-					if cursor_display_col >= bounds.min_col_display then
-						return block
-					end
-
-					-- Otherwise, keep this as a candidate and continue searching parents
-					candidate_block = block
-				else
-					-- If we can't get bounds, just use this block
-					return block
+					table.insert(matching_blocks, {
+						block = block,
+						bounds = bounds,
+						depth = depth, -- Track depth in tree (smaller = deeper/more specific)
+					})
 				end
 			end
 		end
-		node = node:parent()
+		temp_node = temp_node:parent()
+		depth = depth + 1
 	end
 
-	-- If we found a candidate but cursor was left of it, return the candidate
-	-- (this means we're in the indentation area of the innermost block)
-	return candidate_block
+	-- Find the best matching block
+	-- Strategy:
+	-- 1. If any blocks start on cursor line, pick the one closest to (but before/at) cursor
+	-- 2. Otherwise, pick by depth then size
+	local best_block = nil
+	local best_depth = math.huge
+	local smallest_size = math.huge
+	local closest_start_col = -1
+	local has_block_on_cursor_line = false
+
+	-- First pass: check if any blocks start on cursor line
+	for _, match in ipairs(matching_blocks) do
+		local block = match.block
+		local bounds = match.bounds
+
+		if cursor_display_col >= bounds.min_col_display and block.start_row == row then
+			has_block_on_cursor_line = true
+			break
+		end
+	end
+
+	-- Second pass: find best block
+	for _, match in ipairs(matching_blocks) do
+		local block = match.block
+		local bounds = match.bounds
+		local depth = match.depth
+
+		-- Check if cursor is at or after the block's left edge
+		if cursor_display_col >= bounds.min_col_display then
+			-- Calculate block size (number of lines)
+			local size = bounds.end_row - bounds.start_row + 1
+
+			local is_better = false
+
+			if has_block_on_cursor_line then
+				-- Only consider blocks that start on cursor line
+				if block.start_row == row then
+					local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+					local start_col = vim.fn.strdisplaywidth(line:sub(1, block.start_col))
+
+					-- Pick block with start closest to cursor (but at or before cursor)
+					if start_col <= cursor_display_col and start_col > closest_start_col then
+						is_better = true
+						closest_start_col = start_col
+					elseif start_col == closest_start_col then
+						-- Tie: use depth and size
+						is_better = depth < best_depth or (depth == best_depth and size < smallest_size)
+					end
+				end
+			else
+				-- No blocks on cursor line, use depth and size
+				is_better = depth < best_depth or (depth == best_depth and size < smallest_size)
+			end
+
+			if is_better then
+				best_block = block
+				best_depth = depth
+				smallest_size = size
+			end
+		end
+	end
+
+	-- If we found a block where cursor is inside, return it
+	if best_block then
+		return best_block
+	end
+
+	-- Otherwise, cursor is left of all blocks, return the innermost one (lowest depth)
+	if #matching_blocks > 0 then
+		return matching_blocks[1].block
+	end
+
+	return nil
 end
 
 -- Get the rectangular bounds of a block (min col, max col)
@@ -162,25 +229,41 @@ function M.get_block_bounds(block)
 	local min_col_display = math.huge
 	local max_col = 0
 
-	for _, line in ipairs(lines) do
-		-- Find first non-whitespace character (byte position)
-		local first_char = line:match("^%s*()%S")
+	for i, line in ipairs(lines) do
+		local is_first_line = (i == 1)
+
+		-- For the first line, only consider content starting from block.start_col
+		local effective_line = line
+		local col_offset = 0
+		if is_first_line and block.start_col > 0 then
+			effective_line = line:sub(block.start_col + 1)
+			col_offset = block.start_col
+			-- Calculate display width up to start_col for offset
+			local prefix = line:sub(1, block.start_col)
+			col_offset = vim.fn.strdisplaywidth(prefix)
+		end
+
+		-- Find first non-whitespace character (byte position) in effective line
+		local first_char = effective_line:match("^%s*()%S")
 		if first_char then
-			local byte_pos = first_char - 1
+			local byte_pos = first_char - 1 + (is_first_line and block.start_col or 0)
 			min_col_byte = math.min(min_col_byte, byte_pos)
 			-- Calculate display width of leading whitespace
-			local leading_ws = line:sub(1, byte_pos)
-			local display_pos = vim.fn.strdisplaywidth(leading_ws)
+			local leading_ws = effective_line:sub(1, first_char - 1)
+			local display_pos = vim.fn.strdisplaywidth(leading_ws) + col_offset
 			min_col_display = math.min(min_col_display, display_pos)
 		end
-		-- Use vim.fn.strdisplaywidth for accurate display width with tabs
+
+		-- For max_col, use the full line width (not offset by start_col)
 		max_col = math.max(max_col, vim.fn.strdisplaywidth(line))
 	end
 
 	-- If all lines are empty, use start_col
 	if min_col_byte == math.huge then
 		min_col_byte = block.start_col
-		min_col_display = block.start_col
+		local first_line = lines[1] or ""
+		local prefix = first_line:sub(1, block.start_col)
+		min_col_display = vim.fn.strdisplaywidth(prefix)
 	end
 
 	return {
