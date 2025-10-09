@@ -109,7 +109,15 @@ function M.get_containing_block()
 				if bounds then
 					-- Get cursor's display column
 					local current_line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
-					local cursor_display_col = vim.fn.strdisplaywidth(current_line:sub(1, col))
+					local cursor_display_col
+
+					if #current_line == 0 or col >= #current_line then
+						-- Empty line or cursor in virtual space: use virtcol() for accurate position
+						cursor_display_col = vim.fn.virtcol(".")
+					else
+						-- Normal line: calculate from line content
+						cursor_display_col = vim.fn.strdisplaywidth(current_line:sub(1, col))
+					end
 
 					-- If cursor is at or after the block's left edge, this is our block
 					if cursor_display_col >= bounds.min_col_display then
@@ -199,6 +207,13 @@ function M.update_highlight()
 	local bounds = M.get_block_bounds(block)
 	if not bounds then
 		return
+	end
+
+	-- Extend max_col to include cursor if it's to the right
+	local cursor = vim.api.nvim_win_get_cursor(0)
+	local cursor_virtcol = vim.fn.virtcol(".")
+	if cursor_virtcol > bounds.max_col then
+		bounds.max_col = cursor_virtcol
 	end
 
 	M.current_block = bounds

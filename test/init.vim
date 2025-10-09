@@ -6,6 +6,10 @@ let mapleader = " "
 " Use system clipboard
 set clipboard=unnamedplus
 
+" Allow cursor to move freely in all areas, including past end of line
+" This keeps cursor at indentation level on blank lines
+set virtualedit=all
+
 " Add plugin to runtimepath
 set rtp+=.
 
