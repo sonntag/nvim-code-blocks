@@ -67,12 +67,21 @@ function M.get_containing_block()
 		return nil
 	end
 
-	local parser = vim.treesitter.get_parser(bufnr)
-	if not parser then
+	-- Try to get parser, but catch errors for missing parsers
+	local ok_parser, parser = pcall(vim.treesitter.get_parser, bufnr)
+	if not ok_parser or not parser then
 		return nil
 	end
 
-	local tree = parser:parse()[1]
+	-- Try to parse, catching errors
+	local ok_parse, trees = pcall(function()
+		return parser:parse()
+	end)
+	if not ok_parse or not trees or #trees == 0 then
+		return nil
+	end
+
+	local tree = trees[1]
 	if not tree then
 		return nil
 	end
