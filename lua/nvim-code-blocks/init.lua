@@ -28,7 +28,7 @@ M.config = {
 			"while_statement",
 		},
 		clojure = { "list_lit", "vec_lit", "map_lit", "set_lit" },
-		lua = { "function_declaration", "function_definition", "local_declaration", "block", "if_statement", "for_statement", "while_statement", "do_statement" },
+		lua = { "function_declaration", "function_definition", "function_call", "variable_declaration", "arguments", "table_constructor", "block", "if_statement", "for_statement", "while_statement", "do_statement" },
 	},
 }
 
