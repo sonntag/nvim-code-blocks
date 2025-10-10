@@ -308,7 +308,9 @@ function M.update_highlight()
 		bounds.max_col = cursor_virtcol
 	end
 
+	-- Store both bounds and original block for later use
 	M.current_block = bounds
+	M.current_block_node = block
 
 	local bufnr = vim.api.nvim_get_current_buf()
 
@@ -318,6 +320,14 @@ function M.update_highlight()
 		local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
 		local line_len = #line
 		local line_display_width = vim.fn.strdisplaywidth(line)
+
+		-- Check if this is the last line and block ends mid-line
+		local is_last_line = (row == bounds.end_row)
+		local end_col_limit = nil
+		if is_last_line and M.current_block_node and M.current_block_node.end_col < line_len then
+			-- Block ends before the line ends, only highlight up to block.end_col
+			end_col_limit = M.current_block_node.end_col
+		end
 
 		-- For empty lines, add virtual text at column 0
 		if line_len == 0 then
@@ -341,28 +351,42 @@ function M.update_highlight()
 			-- Ensure start_col is valid
 			local start_col = math.min(bounds.min_col, line_len)
 
-			-- For the main highlight, go to end of actual line content
-			-- Use end_line instead of end_col to highlight entire line
-			local ok1, extmark1 = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, start_col, {
-				end_line = row + 1,
-				hl_group = M.config.highlight.hl_group,
-				priority = 100,
-			})
+			-- For the main highlight
+			local ok1, extmark1
+			if end_col_limit then
+				-- Last line with mid-line end: highlight from start_col to end_col
+				ok1, extmark1 = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, start_col, {
+					end_row = row,
+					end_col = end_col_limit,
+					hl_group = M.config.highlight.hl_group,
+					priority = 100,
+				})
+			else
+				-- Normal line: highlight to end of line
+				ok1, extmark1 = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, start_col, {
+					end_line = row + 1,
+					hl_group = M.config.highlight.hl_group,
+					priority = 100,
+				})
+			end
 
 			if ok1 then
 				table.insert(M.extmarks, extmark1)
 			end
 
 			-- Add virtual text to extend to max_col (display width)
-			local virt_text_len = math.max(0, bounds.max_col - line_display_width)
-			if virt_text_len > 0 then
-				local ok2, extmark2 = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, line_len, {
-					virt_text = { { string.rep(" ", virt_text_len), M.config.highlight.hl_group } },
-					virt_text_pos = "overlay",
-					priority = 100,
-				})
-				if ok2 then
-					table.insert(M.extmarks, extmark2)
+			-- But not on last line if block ends mid-line
+			if not end_col_limit then
+				local virt_text_len = math.max(0, bounds.max_col - line_display_width)
+				if virt_text_len > 0 then
+					local ok2, extmark2 = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, line_len, {
+						virt_text = { { string.rep(" ", virt_text_len), M.config.highlight.hl_group } },
+						virt_text_pos = "overlay",
+						priority = 100,
+					})
+					if ok2 then
+						table.insert(M.extmarks, extmark2)
+					end
 				end
 			end
 		end
