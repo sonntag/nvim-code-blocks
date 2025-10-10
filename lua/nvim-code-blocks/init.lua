@@ -28,7 +28,7 @@ M.config = {
 			"while_statement",
 		},
 		clojure = { "list_lit", "vec_lit", "map_lit", "set_lit" },
-		lua = { "function_declaration", "block", "if_statement", "for_statement", "while_statement", "do_statement" },
+		lua = { "function_declaration", "function_definition", "local_declaration", "block", "if_statement", "for_statement", "while_statement", "do_statement" },
 	},
 }
 
@@ -321,6 +321,14 @@ function M.update_highlight()
 		local line_len = #line
 		local line_display_width = vim.fn.strdisplaywidth(line)
 
+		-- Check if this is the first line and block starts mid-line
+		local is_first_line = (row == bounds.start_row)
+		local start_col_override = nil
+		if is_first_line and M.current_block_node and M.current_block_node.start_col > 0 then
+			-- Block starts after beginning of line, only highlight from block.start_col
+			start_col_override = M.current_block_node.start_col
+		end
+
 		-- Check if this is the last line and block ends mid-line
 		local is_last_line = (row == bounds.end_row)
 		local end_col_limit = nil
@@ -348,8 +356,15 @@ function M.update_highlight()
 				table.insert(M.extmarks, extmark)
 			end
 		else
-			-- Ensure start_col is valid
-			local start_col = math.min(bounds.min_col, line_len)
+			-- Determine start column
+			local start_col
+			if start_col_override then
+				-- First line with mid-line start: use block's actual start
+				start_col = start_col_override
+			else
+				-- Normal line: use bounds min_col
+				start_col = math.min(bounds.min_col, line_len)
+			end
 
 			-- For the main highlight
 			local ok1, extmark1
