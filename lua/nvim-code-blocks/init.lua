@@ -27,8 +27,20 @@ M.config = {
 			"for_statement",
 			"while_statement",
 		},
-		clojure = { "list_lit", "vec_lit", "map_lit", "set_lit" },
-		lua = { "function_declaration", "function_definition", "function_call", "variable_declaration", "arguments", "table_constructor", "block", "if_statement", "for_statement", "while_statement", "do_statement" },
+		clojure = { "list_lit", "vec_lit", "map_lit", "set_lit", "anon_fn_lit" },
+		lua = {
+			"function_declaration",
+			"function_definition",
+			"function_call",
+			"variable_declaration",
+			"arguments",
+			"table_constructor",
+			"block",
+			"if_statement",
+			"for_statement",
+			"while_statement",
+			"do_statement",
+		},
 	},
 }
 
@@ -347,7 +359,7 @@ function M.update_highlight()
 			local ok, extmark = pcall(vim.api.nvim_buf_set_extmark, bufnr, M.namespace, row, 0, {
 				virt_text = {
 					{ leading },
-					{ highlighted, M.config.highlight.hl_group }
+					{ highlighted, M.config.highlight.hl_group },
 				},
 				virt_text_pos = "inline",
 				priority = 100,
