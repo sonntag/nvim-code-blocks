@@ -64,7 +64,7 @@
       fi
     fi
 
-    nvim -u test/init.vim "$FILE"
+    nvim --cmd "set rtp+=." -c "luafile test/init.lua" "$FILE"
   '';
 
   enterShell = ''

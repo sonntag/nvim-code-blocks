@@ -50,8 +50,11 @@ function M.setup(opts)
 
 	-- Setup highlight groups
 	if M.config.highlight.enabled then
+		-- Use CursorLine as the highlight if it exists, otherwise use default color
+		local cursor_line_bg = vim.api.nvim_get_hl(0, { name = "CursorLine" }).bg
+
 		vim.api.nvim_set_hl(0, M.config.highlight.hl_group, {
-			bg = "#2d3139",
+			bg = cursor_line_bg or "#2d3139",
 			default = true,
 		})
 	end
