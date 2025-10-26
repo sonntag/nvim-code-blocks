@@ -246,6 +246,7 @@ function M.get_block_bounds(block)
 
 	for i, line in ipairs(lines) do
 		local is_first_line = (i == 1)
+		local is_last_line = (i == #lines)
 
 		-- For the first line, only consider content starting from block.start_col
 		local effective_line = line
@@ -269,8 +270,16 @@ function M.get_block_bounds(block)
 			min_col_display = math.min(min_col_display, display_pos)
 		end
 
-		-- For max_col, use the full line width (not offset by start_col)
-		max_col = math.max(max_col, vim.fn.strdisplaywidth(line))
+		-- For max_col, consider block boundaries
+		local line_width
+		if is_last_line and block.end_col < #line then
+			-- Last line: only use width up to block.end_col
+			line_width = vim.fn.strdisplaywidth(line:sub(1, block.end_col))
+		else
+			-- Other lines: use full line width
+			line_width = vim.fn.strdisplaywidth(line)
+		end
+		max_col = math.max(max_col, line_width)
 	end
 
 	-- If all lines are empty, use start_col
