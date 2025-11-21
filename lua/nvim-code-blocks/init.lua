@@ -453,12 +453,7 @@ function M.on_yank()
     local register = event.regname
     local regtype = event.regtype
 
-    -- Only process if it's a linewise or blockwise yank
-    -- (charwise yanks don't benefit from dedenting)
-    if regtype ~= "V" and regtype ~= "\22" then
-        return
-    end
-
+    -- Only process multi-line yanks (single line yanks don't need dedenting)
     -- Default to unnamed register if empty
     if register == "" then
         register = '"'
@@ -470,8 +465,33 @@ function M.on_yank()
         return
     end
 
+    -- Only process if multiple lines (single line dedenting doesn't make sense)
+    if #lines < 2 then
+        return
+    end
+
+    -- Get context from buffer to handle partial line yanks
+    local bufnr = vim.api.nvim_get_current_buf()
+    local start_pos = vim.api.nvim_buf_get_mark(bufnr, "<")
+    local end_pos = vim.api.nvim_buf_get_mark(bufnr, ">")
+    local start_row = start_pos[1] - 1 -- Convert to 0-indexed
+    local start_col = start_pos[2]
+
+    -- Check if the first line was yanked from the beginning or mid-line
+    local first_line_indent = nil
+    if start_col > 0 and start_row >= 0 then
+        -- Partial first line - use the column position as the effective indentation
+        -- This treats any preceding text (whitespace or not) as if it were indentation
+        local full_first_line = vim.api.nvim_buf_get_lines(bufnr, start_row, start_row + 1, false)[1]
+        if full_first_line then
+            -- Use the display width of everything up to start_col as the "indent"
+            local prefix = full_first_line:sub(1, start_col)
+            first_line_indent = vim.fn.strdisplaywidth(prefix)
+        end
+    end
+
     -- Dedent the lines
-    local dedented = M.dedent_yank(lines)
+    local dedented = M.dedent_yank(lines, first_line_indent)
 
     -- Replace the register content with dedented version
     vim.fn.setreg(register, dedented, regtype)
@@ -486,17 +506,25 @@ function M.on_yank()
 end
 
 -- Dedent yanked text by removing common leading whitespace
-function M.dedent_yank(lines)
+-- @param lines table: Lines of text to dedent
+-- @param first_line_indent number|nil: The actual indentation of the first line (if it was yanked mid-line)
+function M.dedent_yank(lines, first_line_indent)
     if #lines == 0 then
         return lines
     end
 
     -- Find minimum leading whitespace (in display width)
     local min_indent = math.huge
-    for _, line in ipairs(lines) do
+    for i, line in ipairs(lines) do
         if line:match("%S") then -- Skip empty lines
             local leading_ws = line:match("^%s*") or ""
             local indent = vim.fn.strdisplaywidth(leading_ws)
+
+            -- For the first line, if we know its actual indentation from the buffer, use that
+            if i == 1 and first_line_indent then
+                indent = first_line_indent
+            end
+
             min_indent = math.min(min_indent, indent)
         end
     end
@@ -507,11 +535,17 @@ function M.dedent_yank(lines)
 
     -- Remove min_indent from all lines
     local dedented = {}
-    for _, line in ipairs(lines) do
+    for i, line in ipairs(lines) do
         if line:match("%S") then
             local leading_ws = line:match("^(%s*)")
             local leading_ws_width = vim.fn.strdisplaywidth(leading_ws)
-            if leading_ws_width >= min_indent then
+
+            -- For the first line with known indent, we need to handle it specially
+            if i == 1 and first_line_indent then
+                -- The first line in the register doesn't have its full indentation
+                -- So we don't remove anything from it (it's already "dedented" relative to buffer)
+                table.insert(dedented, line)
+            elseif leading_ws_width >= min_indent then
                 -- Find the byte position that corresponds to min_indent display width
                 local bytes_to_remove = 0
                 local width_removed = 0
