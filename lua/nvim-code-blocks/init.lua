@@ -58,15 +58,26 @@ function M.setup(opts)
         })
     end
 
+    -- Setup autocmd group
+    local augroup = vim.api.nvim_create_augroup("nvim-code-blocks", { clear = true })
+
     -- Setup autocmd for automatic highlighting
     if M.config.highlight.auto_update then
         vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
             callback = function()
                 M.update_highlight()
             end,
-            group = vim.api.nvim_create_augroup("nvim-code-blocks", { clear = true }),
+            group = augroup,
         })
     end
+
+    -- Setup autocmd for auto-dedenting yanked text
+    vim.api.nvim_create_autocmd("TextYankPost", {
+        callback = function()
+            M.on_yank()
+        end,
+        group = augroup,
+    })
 end
 
 -- Get the smallest Treesitter node containing the cursor
@@ -431,144 +442,99 @@ function M.update_highlight()
     end
 end
 
--- Normalize leading whitespace in text
-function M.normalize_whitespace(lines)
+-- Handler for TextYankPost event - dedents yanked text
+function M.on_yank()
+    -- Get the register that was just yanked to
+    local event = vim.v.event
+    if not event then
+        return
+    end
+
+    local register = event.regname
+    local regtype = event.regtype
+
+    -- Only process if it's a linewise or blockwise yank
+    -- (charwise yanks don't benefit from dedenting)
+    if regtype ~= "V" and regtype ~= "\22" then
+        return
+    end
+
+    -- Default to unnamed register if empty
+    if register == "" then
+        register = '"'
+    end
+
+    -- Get the content from the register
+    local lines = vim.fn.getreg(register, 1, true)
+    if not lines or #lines == 0 then
+        return
+    end
+
+    -- Dedent the lines
+    local dedented = M.dedent_yank(lines)
+
+    -- Replace the register content with dedented version
+    vim.fn.setreg(register, dedented, regtype)
+
+    -- Also update system clipboard if using clipboard=unnamedplus or clipboard=unnamed
+    if vim.o.clipboard:match("unnamedplus") then
+        vim.fn.setreg("+", dedented, regtype)
+    end
+    if vim.o.clipboard:match("unnamed") then
+        vim.fn.setreg("*", dedented, regtype)
+    end
+end
+
+-- Dedent yanked text by removing common leading whitespace
+function M.dedent_yank(lines)
     if #lines == 0 then
         return lines
     end
 
-    -- Find minimum leading whitespace
+    -- Find minimum leading whitespace (in display width)
     local min_indent = math.huge
     for _, line in ipairs(lines) do
         if line:match("%S") then -- Skip empty lines
-            local indent = line:match("^%s*"):len()
+            local leading_ws = line:match("^%s*") or ""
+            local indent = vim.fn.strdisplaywidth(leading_ws)
             min_indent = math.min(min_indent, indent)
         end
     end
 
-    if min_indent == math.huge then
+    if min_indent == math.huge or min_indent == 0 then
         return lines
     end
 
-    -- Remove common leading whitespace
-    local normalized = {}
+    -- Remove min_indent from all lines
+    local dedented = {}
     for _, line in ipairs(lines) do
         if line:match("%S") then
-            table.insert(normalized, line:sub(min_indent + 1))
-        else
-            table.insert(normalized, "")
-        end
-    end
-
-    return normalized
-end
-
--- Yank code block
-function M.yank_block(register)
-    local block = M.get_containing_block()
-    if not block then
-        vim.notify("No code block found at cursor", vim.log.levels.WARN)
-        return
-    end
-
-    -- Default to unnamed register if not specified
-    -- This respects clipboard=unnamedplus or clipboard=unnamed settings
-    if not register then
-        register = vim.o.clipboard:match("unnamedplus") and "+" or vim.o.clipboard:match("unnamed") and "*" or '"'
-    end
-
-    local bufnr = vim.api.nvim_get_current_buf()
-    local lines = vim.api.nvim_buf_get_lines(bufnr, block.start_row, block.end_row + 1, false)
-
-    -- Calculate the base indentation from the first line's start position
-    -- This represents where the block starts in the original code
-    local base_indent = 0
-    if #lines > 0 then
-        local first_line = lines[1]
-        -- The visual indentation of the block is where it starts (start_col display width)
-        base_indent = vim.fn.strdisplaywidth(first_line:sub(1, block.start_col))
-    end
-
-    -- For first line, trim to start at block.start_col
-    if #lines > 0 and block.start_col > 0 then
-        lines[1] = lines[1]:sub(block.start_col + 1)
-    end
-
-    -- Trim last line to end at block.end_col
-    if #lines > 0 and block.end_col < #lines[#lines] then
-        lines[#lines] = lines[#lines]:sub(1, block.end_col)
-    end
-
-    -- Find minimum indentation in the block content
-    local min_indent = math.huge
-    for i, line in ipairs(lines) do
-        if line:match("%S") then -- Skip empty lines
-            local indent
-            if i == 1 then
-                -- First line: its effective indent is base_indent (where the block starts)
-                -- plus any additional leading whitespace in the content
-                local leading_ws = line:match("^%s*") or ""
-                indent = base_indent + vim.fn.strdisplaywidth(leading_ws)
-            else
-                -- Other lines: use their actual indentation
-                local leading_ws = line:match("^%s*") or ""
-                indent = vim.fn.strdisplaywidth(leading_ws)
-            end
-            min_indent = math.min(min_indent, indent)
-        end
-    end
-
-    if min_indent == math.huge then
-        min_indent = 0
-    end
-
-    -- Normalize: remove min_indent from all lines
-    local normalized = {}
-    for i, line in ipairs(lines) do
-        if line:match("%S") then
-            if i == 1 then
-                -- First line: we need to account for base_indent
-                local leading_ws = line:match("^%s*") or ""
-                local current_indent = base_indent + vim.fn.strdisplaywidth(leading_ws)
-                local to_remove = min_indent - base_indent
-                if to_remove > 0 and to_remove <= #leading_ws then
-                    -- Remove characters from the leading whitespace
-                    table.insert(normalized, line:sub(to_remove + 1))
-                else
-                    table.insert(normalized, line)
-                end
-            else
-                -- Other lines: remove min_indent spaces
-                local leading_ws = line:match("^(%s*)")
-                local leading_ws_width = vim.fn.strdisplaywidth(leading_ws)
-                if leading_ws_width >= min_indent then
-                    -- Find the byte position that corresponds to min_indent display width
-                    local bytes_to_remove = 0
-                    local width_removed = 0
-                    for j = 1, #leading_ws do
-                        local char = leading_ws:sub(j, j)
-                        local char_width = vim.fn.strdisplaywidth(char)
-                        if width_removed + char_width <= min_indent then
-                            bytes_to_remove = bytes_to_remove + 1
-                            width_removed = width_removed + char_width
-                        else
-                            break
-                        end
+            local leading_ws = line:match("^(%s*)")
+            local leading_ws_width = vim.fn.strdisplaywidth(leading_ws)
+            if leading_ws_width >= min_indent then
+                -- Find the byte position that corresponds to min_indent display width
+                local bytes_to_remove = 0
+                local width_removed = 0
+                for j = 1, #leading_ws do
+                    local char = leading_ws:sub(j, j)
+                    local char_width = vim.fn.strdisplaywidth(char)
+                    if width_removed + char_width <= min_indent then
+                        bytes_to_remove = bytes_to_remove + 1
+                        width_removed = width_removed + char_width
+                    else
+                        break
                     end
-                    table.insert(normalized, line:sub(bytes_to_remove + 1))
-                else
-                    table.insert(normalized, line)
                 end
+                table.insert(dedented, line:sub(bytes_to_remove + 1))
+            else
+                table.insert(dedented, line)
             end
         else
-            table.insert(normalized, "")
+            table.insert(dedented, "")
         end
     end
 
-    -- Yank to specified register as linewise
-    vim.fn.setreg(register, normalized, "l")
-
-    vim.notify(string.format("Yanked %d lines to register %s", #normalized, register), vim.log.levels.INFO)
+    return dedented
 end
 
 -- Delete code block
