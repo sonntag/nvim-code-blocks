@@ -62,11 +62,10 @@ If you use a plugin manager like lazy.nvim, add to your config:
 ## Requirements
 
 **Important**: This plugin requires:
-- Neovim 0.9+
-- nvim-treesitter plugin installed
+- Neovim 0.10+ (built-in treesitter support)
 - Treesitter parser for the language you're testing (e.g., `:TSInstall lua`)
 
-If Treesitter isn't available, the plugin will silently do nothing.
+If a treesitter parser isn't available for the filetype, the plugin will silently do nothing.
 
 ## Installing nvim-treesitter for testing
 
@@ -95,10 +94,11 @@ require("lazy").setup({
   { "nvim-treesitter/nvim-treesitter", build = ":TSUpdate" },
 })
 
-require("nvim-treesitter.configs").setup({
-  ensure_installed = { "lua", "python", "javascript" },
-  highlight = { enable = true },
-})
+-- Install parsers (nvim-treesitter main branch)
+vim.cmd("TSInstall lua python javascript")
+
+-- Enable treesitter highlighting
+vim.treesitter.start()
 
 require("nvim-code-blocks").setup()
 
