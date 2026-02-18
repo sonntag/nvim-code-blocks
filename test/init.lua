@@ -32,15 +32,9 @@ end, { desc = "Highlight code block" })
 
 -- Debug command to check treesitter
 vim.keymap.set("n", "<leader>ct", function()
-	local ok, ts = pcall(require, "nvim-treesitter.ts_utils")
-	if not ok then
-		print("nvim-treesitter NOT available")
-		return
-	end
-
-	local parser = vim.treesitter.get_parser(0)
-	if not parser then
-		print("No Treesitter parser for this buffer")
+	local ok, parser = pcall(vim.treesitter.get_parser, 0)
+	if not ok or not parser then
+		print("Treesitter parser NOT available for this buffer")
 		return
 	end
 

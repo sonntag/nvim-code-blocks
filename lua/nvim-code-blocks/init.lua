@@ -87,12 +87,6 @@ function M.get_containing_block()
     local cursor = vim.api.nvim_win_get_cursor(0)
     local row, col = cursor[1] - 1, cursor[2]
 
-    -- Check if Treesitter is available
-    local ok, ts_utils = pcall(require, "nvim-treesitter.ts_utils")
-    if not ok then
-        return nil
-    end
-
     -- Try to get parser, but catch errors for missing parsers
     local ok_parser, parser = pcall(vim.treesitter.get_parser, bufnr)
     if not ok_parser or not parser then
