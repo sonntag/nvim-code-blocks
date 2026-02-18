@@ -71,13 +71,14 @@ function M.setup(opts)
         })
     end
 
+    -- TODO: Re-enable when dedent logic is fixed
     -- Setup autocmd for auto-dedenting yanked text
-    vim.api.nvim_create_autocmd("TextYankPost", {
-        callback = function()
-            M.on_yank()
-        end,
-        group = augroup,
-    })
+    -- vim.api.nvim_create_autocmd("TextYankPost", {
+    --     callback = function()
+    --         M.on_yank()
+    --     end,
+    --     group = augroup,
+    -- })
 end
 
 -- Get the smallest Treesitter node containing the cursor
